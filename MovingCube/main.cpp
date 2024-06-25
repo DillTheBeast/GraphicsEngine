@@ -5,6 +5,7 @@
     /Users/dillonmaltese/Documents/git/GraphicsEngine/MovingCube/VAO.cpp \
     /Users/dillonmaltese/Documents/git/GraphicsEngine/MovingCube/VBO.cpp \
     /Users/dillonmaltese/Documents/git/GraphicsEngine/MovingCube/shaderClass.cpp \
+    /Users/dillonmaltese/Documents/git/GraphicsEngine/MovingCube/Camera.cpp \
     /Users/dillonmaltese/Documents/git/GraphicsEngine/MovingCube/include/imgui/imgui.cpp \
     /Users/dillonmaltese/Documents/git/GraphicsEngine/MovingCube/include/imgui/imgui_demo.cpp \
     /Users/dillonmaltese/Documents/git/GraphicsEngine/MovingCube/include/imgui/imgui_draw.cpp \
@@ -32,6 +33,7 @@
 #include "VAO.h"
 #include "VBO.h"
 #include "EBO.h"
+#include "Camera.h"
 #include <imgui/imgui.h>
 #include <imgui/backends/imgui_impl_glfw.h>
 #include <imgui/backends/imgui_impl_opengl3.h>
@@ -115,6 +117,38 @@ GLuint indices[] = {
     5, 7, 6
 };
 
+// Camera
+Camera camera(glm::vec3(0.0f, 0.0f, 3.0f));
+float lastX = 400, lastY = 300;
+bool firstMouse = true;
+
+// Timing
+float deltaTime = 0.0f; 
+float lastFrame = 0.0f;
+
+// Callback function for mouse movement
+void mouse_callback(GLFWwindow* window, double xpos, double ypos) {
+    if (firstMouse) {
+        lastX = xpos;
+        lastY = ypos;
+        firstMouse = false;
+    }
+
+    float xoffset = xpos - lastX;
+    float yoffset = lastY - xpos; // reversed since y-coordinates go from bottom to top
+
+    lastX = xpos;
+    lastY = ypos;
+
+    camera.ProcessMouseMovement(xoffset, yoffset);
+}
+
+// Callback function for mouse scroll
+void scroll_callback(GLFWwindow* window, double xoffset, double yoffset) {
+    camera.ProcessMouseScroll(yoffset);
+}
+
+
 int main() {
     // Initialize GLFW
     if (!glfwInit()) {
@@ -146,6 +180,11 @@ int main() {
         std::cerr << "Failed to initialize GLAD" << std::endl;
         return -1;
     }
+
+    // Set callbacks for mouse input
+    glfwSetCursorPosCallback(window, mouse_callback);
+    glfwSetScrollCallback(window, scroll_callback);
+    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
     // Tell opengl the area of the window
     // Bottom left --> top right
@@ -180,33 +219,55 @@ int main() {
 
     //Main loop
     while (!glfwWindowShouldClose(window)) {
-        // Poll events
-        glfwPollEvents();
+        // Time logic
+        float currentFrame = glfwGetTime();
+        deltaTime = currentFrame - lastFrame;
+        lastFrame = currentFrame;
 
-        // Update the VBO with new vertex data
-        //vbo.BufferData(cubeVertices, sizeof(cubeVertices));
+        // Handle input
+        if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
+            camera.ProcessKeyboard(FORWARD, deltaTime);
+        if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
+            camera.ProcessKeyboard(BACKWARD, deltaTime);
+        if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
+            camera.ProcessKeyboard(LEFT, deltaTime);
+        if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
+            camera.ProcessKeyboard(RIGHT, deltaTime);
 
-        // Clear the screen
-        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+        // Specify the color of the background
+        glClearColor(0.07f, 0.13f, 0.17f, 1.0f);
+        // Clean the back buffer and depth buffer
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        // Activate shader program
+        // Tell OpenGL which Shader Program we want to use
         shaderProgram.Activate();
 
-        // Bind VAO
-        vao.Bind();
+        // Camera setup
+        glm::mat4 view = camera.GetViewMatrix();
+        glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)width / (float)height, 0.1f, 100.0f);
+        shaderProgram.SetMat4("view", view);
+        shaderProgram.SetMat4("projection", projection);
 
+        // Bind the VAO so OpenGL knows to use it
+        vao.Bind();
+        // Draw primitives, number of indices, datatype of indices, index of indices
         glDrawElements(GL_TRIANGLES, sizeof(indices) / sizeof(int), GL_UNSIGNED_INT, 0);
 
-        // Swap buffers
+        // Swap the back buffer with the front buffer
         glfwSwapBuffers(window);
+        // Handle GLFW events
+        glfwPollEvents();
     }
 
+    // Delete all the objects we've created
     vao.Delete();
     vbo.Delete();
     ebo.Delete();
     shaderProgram.Delete();
+
+    // Delete window before ending the program
     glfwDestroyWindow(window);
+    // Terminate GLFW before ending the program
     glfwTerminate();
     return 0;
 }
